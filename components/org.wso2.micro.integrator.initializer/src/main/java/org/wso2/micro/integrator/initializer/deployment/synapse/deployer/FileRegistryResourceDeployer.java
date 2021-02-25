@@ -31,6 +31,7 @@ import org.wso2.micro.application.deployer.config.Artifact;
 import org.wso2.micro.application.deployer.config.CappFile;
 import org.wso2.micro.application.deployer.config.RegistryConfig;
 import org.wso2.micro.application.deployer.handler.AppDeploymentHandler;
+import org.wso2.micro.integrator.registry.MicroIntegratorRegistry;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -54,11 +55,7 @@ public class FileRegistryResourceDeployer implements AppDeploymentHandler {
     public static final Log log = LogFactory.getLog(FileRegistryResourceDeployer.class);
 
     private static final String REGISTRY_RESOURCE_TYPE = "registry/resource";
-    private static final String GOV_REGISTRY_PATH = "/_system/governance";
-    private static final String GOV_REGISTRY_PREFIX = "gov:";
-    private static final String CONFIG_REGISTRY_PATH = "/_system/config";
-    private static final String CONFIG_REGISTRY_PREFIX = "conf:";
-
+    
     public FileRegistryResourceDeployer(Registry lightweightRegistry) {
         this.lightweightRegistry = lightweightRegistry;
     }
@@ -203,7 +200,26 @@ public class FileRegistryResourceDeployer implements AppDeploymentHandler {
             }
             String resourcePath = AppDeployerUtils.computeResourcePath(createRegistryKey(resource),resource.getFileName());
             String mediaType = resource.getMediaType();
-            lightweightRegistry.newNonEmptyResource(resourcePath, false, mediaType, readResourceContent(file), null);
+            ((MicroIntegratorRegistry)lightweightRegistry).addNewNonEmptyResource(resourcePath, false, mediaType,
+                                                                                  readResourceContent(file),
+                                                                                  resource.getProperties());
+        }
+
+        List<RegistryConfig.Collection> collections = registryConfig.getCollections();
+
+        for (RegistryConfig.Collection collection : collections) {
+            String filePath = registryConfig.getExtractedPath() + File.separator + AppDeployerConstants.RESOURCES_DIR
+                    + File.separator + collection.getDirectory();
+
+            // check whether the file exists
+            File file = new File(filePath);
+            if (!file.exists()) {
+                log.error("Specified file to be written as a resource is " + "not found at : " + filePath);
+                continue;
+            }
+            ((MicroIntegratorRegistry)lightweightRegistry).addNewNonEmptyResource(
+                    createRegistryPath(collection.getPath()), true, "", "",
+                    collection.getProperties());
         }
     }
 
@@ -225,7 +241,8 @@ public class FileRegistryResourceDeployer implements AppDeploymentHandler {
                 // the file is already deleted.
                 continue;
             }
-            String resourcePath = AppDeployerUtils.computeResourcePath(createRegistryKey(resource),resource.getFileName());
+            String resourcePath = AppDeployerUtils.computeResourcePath(createRegistryPath(resource.getPath()),
+                                                                       resource.getFileName());
             lightweightRegistry.delete(resourcePath);
         }
     }
@@ -233,7 +250,6 @@ public class FileRegistryResourceDeployer implements AppDeploymentHandler {
     /**
      * Function to create registry key from registry path
      *
-     * @param resourse resourse
      * @return
      */
     private String createRegistryKey(RegistryConfig.Resourse resourse) {
